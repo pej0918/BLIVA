@@ -12,6 +12,7 @@ from daiv.models.blip_outputs import BlipOutput, BlipOutputFeatures
 
 from daiv.models.dmformer.mcan.net import Net  # Importing the Net class from net.py
 from daiv.models.dmformer.mcan.net_utils import LayerNorm  # Importing LayerNorm
+from daiv.models.dmformer.dat.deformable_attention_1d import DeformableAttention1D
 
 @registry.register_model("blip2")
 @registry.register_model("blip2_feature_extractor")
@@ -88,6 +89,15 @@ class Blip2Qformer(Blip2Base):
 
         self.max_txt_len = max_txt_len
 
+        ##DAT ATTN
+        self.dat = DeformableAttention1D(
+                            dim = 257,
+                            downsample_factor = 4,
+                            offset_scale = 2,
+                            offset_kernel_size = 6,
+                            offset_groups = 1
+                        )
+
     def forward(self, samples):
         print('MCAN training....')
         image = samples["image"]
@@ -125,6 +135,9 @@ class Blip2Qformer(Blip2Base):
         img_feat_mask = self.MCAN.make_mask(image_embeds)
         #print(f'lang_feat_mask size: {lang_feat_mask.size()}')
         #print(f'img_feat_mask size: {img_feat_mask.size()}')
+
+        ##dat
+        image_embeds = self.dat(image_embeds)
 
         # Using MCAN
 
