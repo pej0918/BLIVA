@@ -31,6 +31,9 @@ python train.py --cfg-path train_configs/pretrain_stage1.yaml
 
 2. Pretraining of visual assistant branch
 
+
+you should specify model path in [ pretrained ](https://github.com/pej0918/BLIVA/blob/main/train_configs/pretrain_bliva_vicuna.yaml#L8)
+
 ```Shell
 python train.py --cfg-path train_configs/pretrain_bliva_vicuna.yaml
 ```
@@ -40,4 +43,3 @@ python train.py --cfg-path train_configs/pretrain_bliva_vicuna.yaml
 ```Shell
 python 
 ```
-
