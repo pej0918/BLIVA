@@ -66,7 +66,7 @@ datasets:
               # - okvqa/annotations/answer_list.json
               # - okvqa/annotations/OpenEnded_mscoco_val2014_questions.json
               # - okvqa/annotations/mscoco_val2014_annotations.json
-              - /root/workspace/24s-VQA-MLLM/BEiT3/BLIVA-/daiv/data/okvqa/okvqa_val.json
+              - /root/workspace/24s-VQA-MLLM/BEiT3/stage2-eval/VQA-MLLM-stage2/daiv/data/okvqa/okvqa_val.json
               - /root/datasets/okvqa/data/assets/answer_dict_okvqa.json
               - /root/datasets/okvqa/data/okvqa/OpenEnded_mscoco_val2014_questions.json
               - /root/datasets/okvqa/data/okvqa/mscoco_val2014_annotations.json

@@ -271,23 +271,30 @@ class Blip2VicunaInstruct(Blip2Base):
             prompt = samples["text_input"]
 
         # prompt = [prompt] * image.size(0)
+        if isinstance(prompt, str):
+            prompt = [prompt] * image.size(0)
+        else:
+            assert len(prompt) == image.size(0), "The number of prompts must be equal to the batch size."
 
         llm_tokens = self.llm_tokenizer(
             prompt,
             return_tensors="pt",
             padding="longest",
             truncation=True,
-            max_length=self.max_txt_len,
+            max_length=32 #self.max_txt_len,
         ).to(image.device)
-        # print('prompt', prompt)
-        # print('llm_tokens:', llm_tokens)
-        # llm_tokens = {k: v.to(image.device) for k, v in llm_tokens.items()}
-        attention_mask = torch.cat([atts_llm, llm_tokens.attention_mask], dim=1)
-
-        inputs_embeds = self.llm_model.model.embed_tokens(llm_tokens.input_ids)
-        inputs_embeds = torch.cat([inputs_llm, inputs_embeds], dim=1)
 
         with self.maybe_autocast():
+            # llm_tokens = {k: v.to(image.device) for k, v in llm_tokens.items()}
+            attention_mask = torch.cat([atts_llm, llm_tokens.attention_mask], dim=1)
+
+            # inputs_embeds = self.llm_model.model.embed_tokens(llm_tokens.input_ids)
+            inputs_embeds = self.llm_model.get_input_embeddings()(llm_tokens.input_ids)
+            inputs_embeds = torch.cat([inputs_llm, inputs_embeds], dim=1)
+            # print('inputs_embeds:',inputs_embeds)
+            # exit()
+
+        
             outputs = self.llm_model.generate(
                 inputs_embeds=inputs_embeds,
                 attention_mask=attention_mask,
@@ -295,7 +302,7 @@ class Blip2VicunaInstruct(Blip2Base):
                 top_p=top_p,
                 temperature=temperature,
                 num_beams=num_beams,
-                max_length=max_length,
+                max_length=30,
                 min_length=min_length,
                 eos_token_id=self.eos_token_id,
                 repetition_penalty=repetition_penalty,

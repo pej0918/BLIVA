@@ -480,6 +480,10 @@ class RunnerBase:
         # TODO In validation, you need to compute loss as well as metrics
         # TODO consider moving to model.before_evaluation()
         model = self._load_checkpoint(self.resume_ckpt_path)
+        # checkpoint = torch.load(url_or_filename, map_location=self.device)
+        # state_dict = checkpoint["model"]
+        # model = self.unwrap_dist_model(self.model)
+        # model.load_state_dict(state_dict)
         # model = self.unwrap_dist_model(self.model)
         # if not skip_reload and cur_epoch == "best":
         #     model = self._reload_best_model(model)
@@ -654,7 +658,8 @@ class RunnerBase:
             raise RuntimeError("checkpoint url or path is invalid")
 
         state_dict = checkpoint["model"]
-        model = self.unwrap_dist_model(self.model).load_state_dict(state_dict)
+        model = self.unwrap_dist_model(self.model)
+        model.load_state_dict(state_dict)
 
         self.optimizer.load_state_dict(checkpoint["optimizer"])
         if self.scaler and "scaler" in checkpoint:
@@ -662,7 +667,6 @@ class RunnerBase:
 
         self.start_epoch = checkpoint["epoch"] + 1
         logging.info("Resume checkpoint from {}".format(url_or_filename))
-
         return model
 
     @main_process
