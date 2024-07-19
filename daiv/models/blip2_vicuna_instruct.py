@@ -270,7 +270,7 @@ class Blip2VicunaInstruct(Blip2Base):
             # prompt = self.prompt
             prompt = samples["text_input"]
 
-        prompt = [prompt] * image.size(0)
+        # prompt = [prompt] * image.size(0)
 
         llm_tokens = self.llm_tokenizer(
             prompt,
@@ -279,9 +279,12 @@ class Blip2VicunaInstruct(Blip2Base):
             truncation=True,
             max_length=self.max_txt_len,
         ).to(image.device)
+        # print('prompt', prompt)
+        # print('llm_tokens:', llm_tokens)
+        # llm_tokens = {k: v.to(image.device) for k, v in llm_tokens.items()}
         attention_mask = torch.cat([atts_llm, llm_tokens.attention_mask], dim=1)
 
-        inputs_embeds = self.llm_model.model.embed_tokens(llm_tokens.input.ids)
+        inputs_embeds = self.llm_model.model.embed_tokens(llm_tokens.input_ids)
         inputs_embeds = torch.cat([inputs_llm, inputs_embeds], dim=1)
 
         with self.maybe_autocast():
@@ -435,8 +438,8 @@ class Blip2VicunaInstruct(Blip2Base):
         output_text = self.generate(
             samples,
             num_beams=num_beams,
-            max_length=max_len,
-            min_length=min_len,
+            max_length=30,
+            min_length=1,
             length_penalty=length_penalty
         )
 
