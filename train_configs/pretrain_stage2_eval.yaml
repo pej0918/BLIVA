@@ -6,6 +6,7 @@
 model:
   arch: blip2_vicuna_instruct
   model_type: vicuna7b
+  # model_type: okvqa
   load_pretrained: True
   # intialize stage 2 pretraining from stage 1 pretrained model
   # MCAN
@@ -13,16 +14,22 @@ model:
   # MCAN + DAT
   # pretrained: "/root/workspace/24s-VQA-MLLM/EunJuPark/BLIVA/daiv/output/BLIP2/Pretrain_stage1/20240718160/checkpoint_9.pth" #"/home/intern24/daiv/BLIVA/daiv/output/BLIP2/Pretrain_stage1/mcan_stage1_checkpoint_9.pth"
   freeze_vit: True
+  add_dat: False
 
 
 datasets:
   ok_vqa:
     vis_processor:
-        train:
+        # train:
+        #   name: 
+        #   image_size: 224
+        eval: 
           name: "blip2_image_train"
           image_size: 224
     text_processor:
-        train:
+        # train:
+        #   name: "blip_caption"
+        eval:
           name: "blip_caption"
     # build_info:
     #     images:
@@ -40,7 +47,8 @@ datasets:
     #         storage: '//export/share/datasets/vision/visual-genome/image/'
 
 run:
-  task: image_text_pretrain
+  # task: image_text_pretrain
+  task: vqa
   # optimizer
   lr_sched: "linear_warmup_cosine_lr"
   init_lr: 1e-4
@@ -55,7 +63,7 @@ run:
   warmup_steps: 2000
 
   seed: 42
-  output_dir: "output/BLIP2/Pretrain_stage2"
+  output_dir: "output/BLIP2/Pretrain_stage2_eval"
 
   amp: True
   # MCAN
@@ -65,7 +73,7 @@ run:
 
   evaluate: True 
   train_splits: ["train"]
-  valid_splits: ['ok_vqa']
+  test_splits: ["test"]
 
   device: "cuda"
   world_size: 1

@@ -424,6 +424,17 @@ class RunnerBase:
         total_time_str = str(datetime.timedelta(seconds=int(total_time)))
         logging.info("Training time {}".format(total_time_str))
 
+    # def evaluate(self, cur_epoch="best", skip_reload=False):
+    #     test_logs = dict()
+
+    #     if len(self.test_splits) > 0:
+    #         for split_name in self.test_splits:
+    #             test_logs[split_name] = self.eval_epoch(
+    #                 split_name=split_name, cur_epoch=cur_epoch, skip_reload=skip_reload
+    #             )
+
+    #         return test_logs
+
     def evaluate(self, cur_epoch="best", skip_reload=False):
         test_logs = dict()
 
@@ -485,6 +496,7 @@ class RunnerBase:
                 split_name=split_name,
                 epoch=cur_epoch,
             )
+
 
     def unwrap_dist_model(self, model):
         if self.use_distributed:

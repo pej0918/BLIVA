@@ -48,5 +48,5 @@ python
 # Evaluation
 Evaluation of visual assistant branch (stage2)
 ```Shell
-python train.py --cfg-path train_configs/pretrain_stage2_eval.yaml
+python evaluate.py --cfg-path train_configs/pretrain_stage2_eval.yaml
 ```
