@@ -164,9 +164,6 @@ class Blip2VicunaInstruct(Blip2Base):
 
         mcan_output = mcan_output.unsqueeze(1)
 
-        print(f'mcan output ; {mcan_output.size()}') # torch.Size([8, 1, 512])   
-        print(f'image_embeds_llm ; {image_embeds_llm.size()}') # torch.Size([8, 256, 4096])   
-        print(f'txt_embeds_llm ; {text_embeds_llm.size()}') # torch.Size([8, 29, 4096]) 
         inputs_llm = torch.cat([self.llm_proj(mcan_output), image_embeds_llm, text_embeds_llm], dim=1)
         
         atts_llm = torch.cat([torch.ones(mcan_output.size()[:-1], dtype=torch.long).to(image.device), image_atts_llm, text_atts_llm], dim=1)
@@ -182,6 +179,10 @@ class Blip2VicunaInstruct(Blip2Base):
             truncation=True,
             max_length=self.max_txt_len,
         ).to(image.device)
+        # print('text_output: ', samples["text_output"])
+        # print('text:', text)
+        # print('llm_tokens:', llm_tokens)
+        # exit()
 
         targets = llm_tokens.input_ids.masked_fill(
             llm_tokens.input_ids == self.llm_tokenizer.pad_token_id, -100
@@ -197,6 +198,9 @@ class Blip2VicunaInstruct(Blip2Base):
         inputs_embeds = self.llm_model.model.embed_tokens(llm_tokens.input_ids)
         inputs_embeds = torch.cat([inputs_llm, inputs_embeds], dim=1)
         attention_mask = torch.cat([atts_llm, llm_tokens.attention_mask], dim=1)
+        print('inputs_embeds:', inputs_embeds.shape)
+        print('attention_mask:', attention_mask.shape)
+        exit()
 
         with self.maybe_autocast():
             outputs = self.llm_model(
