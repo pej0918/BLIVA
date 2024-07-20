@@ -291,25 +291,29 @@ class Blip2VicunaInstruct(Blip2Base):
             max_length=32 #self.max_txt_len,
         ).to(image.device)
 
-        print(f"Prompt: {prompt}")
-        print(f"LLM Tokens input_ids: {llm_tokens.input_ids}")
-        print(f"LLM Tokens attention_mask: {llm_tokens.attention_mask}")
+        # print(f"Prompt: {prompt}")
+        # print(f"LLM Tokens input_ids: {llm_tokens.input_ids}")
+        # print(f"LLM Tokens attention_mask: {llm_tokens.attention_mask}")
 
-        # input_ids의 길이 확인
-        print(f"Input IDs Length: {llm_tokens.input_ids.size(1)}")
+        # # input_ids의 길이 확인
+        # print(f"Input IDs Length: {llm_tokens.input_ids.size(1)}")
 
         if llm_tokens.input_ids.size(1) == 0:
             raise ValueError("Input IDs Length is 0. Please check the tokenizer and prompt settings.")
 
         with self.maybe_autocast():
+            # print('inputs_llm----------------------: ', inputs_llm)
             # llm_tokens = {k: v.to(image.device) for k, v in llm_tokens.items()}
             attention_mask = torch.cat([atts_llm, llm_tokens.attention_mask], dim=1)
 
-            # inputs_embeds = self.llm_model.model.embed_tokens(llm_tokens.input_ids)
-            inputs_embeds = self.llm_model.get_input_embeddings()(llm_tokens.input_ids)
-            inputs_embeds = torch.cat([inputs_llm, inputs_embeds], dim=1).squeeze(0).squeeze(0)
-            # print('inputs_embeds:',inputs_embeds)
+            inputs_embeds = self.llm_model.model.embed_tokens(llm_tokens.input_ids)
+            # print('inputs_embeds------------------------: ', inputs_embeds)
+
+            # inputs_embeds = self.llm_model.get_input_embeddings()(llm_tokens.input_ids)
+            inputs_embeds = torch.cat([inputs_llm, inputs_embeds], dim=1)#.squeeze(0).squeeze(0) # torch.Size([8, 312, 4096])
+            # print('Fin inputs_embeds------------------------: ', inputs_embeds)
             # exit()
+            # print('inputs_embeds:', inputs_embeds.shape)
         
             outputs = self.llm_model.generate(
                 inputs_embeds=inputs_embeds,
@@ -318,7 +322,7 @@ class Blip2VicunaInstruct(Blip2Base):
                 top_p=top_p,
                 temperature=temperature,
                 num_beams=num_beams,
-                max_length=30,
+                max_length=max_length,
                 min_length=min_length,
                 eos_token_id=self.eos_token_id,
                 repetition_penalty=repetition_penalty,
