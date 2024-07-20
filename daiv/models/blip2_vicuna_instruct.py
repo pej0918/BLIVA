@@ -257,13 +257,20 @@ class Blip2VicunaInstruct(Blip2Base):
         text_atts_llm = torch.ones(text_embeds_llm.size()[:-1], dtype=torch.long).to(image.device)
 
         # mcan_output = self.MCAN.backbone(text_embeds_mcan, image_embeds_mcan, text_atts_mcan, image_atts_mcan)
-        mcan_output = self.MCAN.backbone(text_embeds_mcan, image_embeds_mcan, text_atts_mcan, image_atts_mcan)
-        mcan_output = torch.cat(mcan_output, dim=1)
+        txt_mcan_output, img_mcan_output = self.MCAN.backbone(text_embeds_mcan, image_embeds_mcan, text_atts_mcan, image_atts_mcan)
+        img_mcan_output = self.MCAN.attflat_img(img_mcan_output, image_atts_mcan)
+        txt_mcan_output = self.MCAN.attflat_lang(txt_mcan_output, text_atts_mcan)
+
+        mcan_output = img_mcan_output + txt_mcan_output
+        mcan_output = self.MCAN.proj_norm(mcan_output)
+        mcan_output = torch.sigmoid(self.MCAN.proj(mcan_output))
+        mcan_output = mcan_output.unsqueeze(1)
+
 
         with self.maybe_autocast():
             inputs_llm = torch.cat([self.llm_proj(mcan_output), image_embeds_llm, text_embeds_llm], dim=1)
             atts_llm = torch.cat([torch.ones(mcan_output.size()[:-1], dtype=torch.long).to(image.device), image_atts_llm, text_atts_llm], dim=1)
-
+            
         if "prompt" in samples.keys():
             prompt = samples["prompt"]
         else:
@@ -284,16 +291,25 @@ class Blip2VicunaInstruct(Blip2Base):
             max_length=32 #self.max_txt_len,
         ).to(image.device)
 
+        print(f"Prompt: {prompt}")
+        print(f"LLM Tokens input_ids: {llm_tokens.input_ids}")
+        print(f"LLM Tokens attention_mask: {llm_tokens.attention_mask}")
+
+        # input_ids의 길이 확인
+        print(f"Input IDs Length: {llm_tokens.input_ids.size(1)}")
+
+        if llm_tokens.input_ids.size(1) == 0:
+            raise ValueError("Input IDs Length is 0. Please check the tokenizer and prompt settings.")
+
         with self.maybe_autocast():
             # llm_tokens = {k: v.to(image.device) for k, v in llm_tokens.items()}
             attention_mask = torch.cat([atts_llm, llm_tokens.attention_mask], dim=1)
 
             # inputs_embeds = self.llm_model.model.embed_tokens(llm_tokens.input_ids)
             inputs_embeds = self.llm_model.get_input_embeddings()(llm_tokens.input_ids)
-            inputs_embeds = torch.cat([inputs_llm, inputs_embeds], dim=1)
+            inputs_embeds = torch.cat([inputs_llm, inputs_embeds], dim=1).squeeze(0).squeeze(0)
             # print('inputs_embeds:',inputs_embeds)
             # exit()
-
         
             outputs = self.llm_model.generate(
                 inputs_embeds=inputs_embeds,
