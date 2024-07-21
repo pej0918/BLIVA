@@ -4,13 +4,13 @@
  # For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
 
 model:
-  arch: blip2_vicuna_instruct
-  model_type: vicuna7b
+  arch: blip2_t5_instruct
+  model_type: flant5xl
   # model_type: okvqa
   load_pretrained: True
   # intialize stage 2 pretraining from stage 1 pretrained model
   # MCAN
-  pretrained: '/root/workspace/24s-VQA-MLLM/EunJuPark/BLIVA/daiv/output/BLIP2/Pretrain_stage1/20240718133/checkpoint_9.pth'
+  pretrained: '/root/workspace/24s-VQA-MLLM/EunJuPark/mcan_stage1_checkpoint_9.pth'
   # MCAN + DAT
   # pretrained: "/root/workspace/24s-VQA-MLLM/EunJuPark/BLIVA/daiv/output/BLIP2/Pretrain_stage1/20240718160/checkpoint_9.pth" #"/home/intern24/daiv/BLIVA/daiv/output/BLIP2/Pretrain_stage1/mcan_stage1_checkpoint_9.pth"
   freeze_vit: True
@@ -67,8 +67,7 @@ run:
 
   amp: True
   # MCAN
-  resume_ckpt_path: '/root/workspace/24s-VQA-MLLM/EunJuPark/stage2/BLIVA/daiv/output/BLIP2/Pretrain_stage2/20240719122/checkpoint_9.pth'
-  # MCAN + DATA 
+  resume_ckpt_path: '/root/workspace/24s-VQA-MLLM/EunJuPark/stage2/BLIVA/daiv/output/BLIP2/Pretrain_stage2/20240720153/checkpoint_9.pth'
   # resume_ckpt_path: '/root/workspace/24s-VQA-MLLM/BEiT3/VQA-MLLM-stage2/daiv/output/BLIP2/Pretrain_stage2/20240719160/checkpoint_9.pth'
 
   evaluate: True 
