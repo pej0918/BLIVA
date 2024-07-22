@@ -268,13 +268,28 @@ class Blip2Qformer(Blip2Base):
             image_atts_all_mask
         )
 
+        output_text = self.MCAN.attflat_lang(
+            output_text,
+            text_atts_all_mask
+        )
+
+        output_image = self.MCAN.attflat_img(
+            output_image,
+            image_atts_all_mask
+        )
+
+        proj_feat = output_text + output_image
+        proj_feat = self.MCAN.proj_norm(proj_feat)
+        vl_embeddings = torch.sigmoid(self.MCAN.proj(proj_feat))
+
         # Process the output from MCA_ED
-        vl_embeddings_text = output_text[:, :self.max_txt_len, :]
-        vl_embeddings_image = output_image[:, :image_embeds_all.size(1), :]
+        #vl_embeddings_text = output_text[:, :self.max_txt_len, :]
+        #vl_embeddings_image = output_image[:, :image_embeds_all.size(1), :]
 
         # Assuming further processing is needed with only one of the outputs
-        vl_output = self.itm_head(vl_embeddings_text)
-        logits = vl_output.mean(dim=1)
+        vl_output = self.itm_head(vl_embeddings)
+        logits = vl_output
+        #logits = vl_output.mean(dim=1)
 
         itm_labels = torch.cat(
             [torch.ones(bs, dtype=torch.long), torch.zeros(2 * bs, dtype=torch.long)],
