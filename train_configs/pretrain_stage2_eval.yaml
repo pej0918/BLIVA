@@ -67,11 +67,12 @@ run:
 
   amp: True
   # MCAN
-  resume_ckpt_path: '/root/workspace/24s-VQA-MLLM/EunJuPark/VQA-MLLM-stage2/daiv/output/BLIP2/Pretrain_stage2_eval/20240720153/checkpoint_9.pth'
+  resume_ckpt_path: '/root/workspace/24s-VQA-MLLM/EunJuPark/stage2/BLIVA/daiv/output/BLIP2/Pretrain_stage2/20240720153/checkpoint_9.pth'
+  # resume_ckpt_path: '/root/workspace/24s-VQA-MLLM/EunJuPark/VQA-MLLM-stage2/daiv/output/BLIP2/Pretrain_stage2_eval/20240720153/checkpoint_9.pth'
   # resume_ckpt_path: '/root/workspace/24s-VQA-MLLM/BEiT3/VQA-MLLM-stage2/daiv/output/BLIP2/Pretrain_stage2/20240719160/checkpoint_9.pth'
 
   evaluate: True 
-  train_splits: ["train"]
+  # train_splits: ["train"]
   test_splits: ["test"]
 
   device: "cuda"

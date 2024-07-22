@@ -33,7 +33,8 @@ class VQATask(BaseTask):
         sample_id_key = "",
         ques_files=dict(),
         anno_files=dict(),
-        valid_splits=['val']
+        # valid_splits=['val']
+        valid_splits=['test']
     ):
         super().__init__()
 
@@ -75,7 +76,8 @@ class VQATask(BaseTask):
         sample_id_key = run_cfg.get("sample_id_key", "instance_id")
         ques_files = run_cfg.get("ques_files", dict())
         anno_files = run_cfg.get("anno_files", dict())
-        valid_splits = run_cfg.get("valid_splits", ["val"])
+        # valid_splits = run_cfg.get("valid_splits", ["val"])
+        valid_splits = run_cfg.get("valid_splits", ["test"])
 
 
         return cls(
@@ -99,7 +101,7 @@ class VQATask(BaseTask):
             for split in self.valid_splits:
                 if split not in dataset:
                     print(f"Split {split} not found in {ds_name}.")
-                    continue # 추가 
+                    # continue # 추가 
                 if (
                     hasattr(dataset[split], "coco_fmt_qust_file")
                     and dataset[split].coco_fmt_qust_file is not None
@@ -141,14 +143,14 @@ class VQATask(BaseTask):
             prompt=self.prompt,
         )
         pred_qa_pairs = []
-
+        question = samples['text_input']
         question_id = samples["question_id"]
-        for answer, ques_id in zip(answers, question_id):
+        for answer, ques_id, que in zip(answers, question_id, question):
             ques_id = int(ques_id.item()) if isinstance(ques_id, torch.Tensor) else ques_id
             if ques_id != int and is_convertible_to_int(ques_id):
                 ques_id = int(ques_id)
             pred_qa_pairs.append({"question_id": ques_id, "answer": answer})
-            print(f'answer : {answer}')
+            print(f'question: {que} / answer : {answer}')
 
         return pred_qa_pairs
 
@@ -161,7 +163,7 @@ class VQATask(BaseTask):
         )
 
         metrics = self._report_metrics(result_file=result_file, split=split_name)
-
+        print(metrics)
         return metrics
 
     @dist_utils.main_process
@@ -170,17 +172,17 @@ class VQATask(BaseTask):
         Use official VQA evaluation script to report metrics.
         """
         metrics = {}
-
+        print(f'ques_files: {self.ques_files} / anno_files: {self.anno_files}' )
         if split in self.ques_files and split in self.anno_files:
             vqa = VQA(self.anno_files[split], self.ques_files[split])
-            vqa_result = vqa.loadRes(
+            vqa_result, resQuesIds = vqa.loadRes(
                 resFile=result_file, quesFile=self.ques_files[split]
             )
             # create vqaEval object by taking vqa and vqaRes
             # n is precision of accuracy (number of places after decimal), default is 2
             vqa_scorer = VQAEval(vqa, vqa_result, n=2)
             logging.info("Start VQA evaluation.")
-            vqa_scorer.evaluate()
+            vqa_scorer.evaluate(resQuesIds)
 
             # print accuracies
             overall_acc = vqa_scorer.accuracy["overall"]
