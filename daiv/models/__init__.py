@@ -14,6 +14,7 @@ from daiv.models.base_model import BaseModel
 
 from daiv.models.blip2 import Blip2Base
 from daiv.models.blip2_vicuna_instruct import Blip2VicunaInstruct
+from daiv.models.blip2_t5_instruct import Blip2T5Instruct
 from daiv.models.bliva_flant5xxl import BLIVAFlanT5
 from daiv.models.bliva_vicuna7b import BLIVAVicuna
 from daiv.models.pretrain_bliva_vicuna7b import PretrainBLIVAVicuna
@@ -21,6 +22,7 @@ from daiv.models.pretrain_bliva_flant5 import PretrainBlivaT5
 from daiv.models.bliva_vicuna7b_lora import BlivaVicunaLoRA
 from daiv.models.vit import VisionTransformerEncoder
 from daiv.models.blip2_qformer import Blip2Qformer
+
 
 from daiv.processors.base_processor import BaseProcessor
 
@@ -35,7 +37,8 @@ __all__ = [
     "PretrainBLIVAVicuna",
     "PretrainBlivaT5",
     "BlivaVicunaLoRA",
-     "Blip2Qformer"
+     "Blip2Qformer",
+     "Blip2T5Instruct"
 ]
 
 
