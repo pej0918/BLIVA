@@ -120,7 +120,7 @@ class Blip2T5Instruct(Blip2Base):
             image_atts_mcan = self.MCAN.make_mask(image_embeds_mcan).to(image.device)
 
         text_input_mcan = samples["text_input"]
-        text_input_llm = samples["text_input"]
+        # text_input_llm = samples["text_input"]
 
         # Process text for MCAN
         text_tokens_mcan = self.tokenizer(
@@ -148,14 +148,16 @@ class Blip2T5Instruct(Blip2Base):
         atts_llm_mcan = torch.ones(text_embeds_llm_mcan.size()[:-1], dtype=torch.long).to(image.device)
 
         # Process text for LLM
-        text_tokens_llm = self.tokenizer(
-            text_input_llm, return_tensors="pt", padding="longest", truncation=True, max_length=self.max_txt_len
-        ).input_ids.to(image.device)
-        text_embeds_llm = self.text_embed_proj(self.MCAN.embedding(text_tokens_llm))
-        atts_llm_text = torch.ones(text_embeds_llm.size()[:-1], dtype=torch.long).to(image.device)
+        # text_tokens_llm = self.tokenizer(
+        #     text_input_llm, return_tensors="pt", padding="longest", truncation=True, max_length=self.max_txt_len
+        # ).input_ids.to(image.device)
+        # text_embeds_llm = self.text_embed_proj(self.MCAN.embedding(text_tokens_llm))
+        # atts_llm_text = torch.ones(text_embeds_llm.size()[:-1], dtype=torch.long).to(image.device)
 
-        inputs_llm = torch.cat([image_embeds_llm, text_embeds_llm_mcan, text_embeds_llm], dim=1)
-        atts_llm = torch.cat([image_atts_llm, atts_llm_mcan, atts_llm_text], dim=1)
+        # inputs_llm = torch.cat([image_embeds_llm, text_embeds_llm_mcan, text_embeds_llm], dim=1)
+        # atts_llm = torch.cat([image_atts_llm, atts_llm_mcan, atts_llm_text], dim=1)
+        inputs_llm = torch.cat([image_embeds_llm, text_embeds_llm_mcan], dim=1)
+        atts_llm = torch.cat([image_atts_llm, atts_llm_mcan], dim=1)
 
         text_output = [t + self.t5_tokenizer.eos_token for t in samples["text_output"]]
 
@@ -212,7 +214,7 @@ class Blip2T5Instruct(Blip2Base):
             image_atts_mcan = self.MCAN.make_mask(image_embeds_mcan).to(image.device)
 
         text_input_mcan = samples["text_input"]
-        text_input_llm = samples["text_input"]
+        # text_input_llm = samples["text_input"]
 
         # Process text for MCAN
         text_tokens_mcan = self.tokenizer(
@@ -239,27 +241,28 @@ class Blip2T5Instruct(Blip2Base):
         atts_llm_mcan = torch.ones(text_embeds_llm_mcan.size()[:-1], dtype=torch.long).to(image.device)
 
         # Process text for LLM
-        text_tokens_llm = self.tokenizer(
-            text_input_llm, return_tensors="pt", padding="longest", truncation=True, max_length=self.max_txt_len
-        ).input_ids.to(image.device)
-        text_embeds_llm = self.text_embed_proj(self.MCAN.embedding(text_tokens_llm))
-        atts_llm_text = torch.ones(text_embeds_llm.size()[:-1], dtype=torch.long).to(image.device)
+        # text_tokens_llm = self.tokenizer(
+        #     text_input_llm, return_tensors="pt", padding="longest", truncation=True, max_length=self.max_txt_len
+        # ).input_ids.to(image.device)
+        # text_embeds_llm = self.text_embed_proj(self.MCAN.embedding(text_tokens_llm))
+        # atts_llm_text = torch.ones(text_embeds_llm.size()[:-1], dtype=torch.long).to(image.device)
 
-        inputs_llm = torch.cat([image_embeds_llm, text_embeds_llm, text_embeds_llm_mcan], dim=1)
-        atts_llm = torch.cat([image_atts_llm, atts_llm_text, atts_llm_mcan], dim=1)
+        # inputs_llm = torch.cat([image_embeds_llm, text_embeds_llm, text_embeds_llm_mcan], dim=1)
+        # atts_llm = torch.cat([image_atts_llm, atts_llm_text, atts_llm_mcan], dim=1)
+        inputs_llm = torch.cat([image_embeds_llm, text_embeds_llm_mcan], dim=1)
+        atts_llm = torch.cat([image_atts_llm, atts_llm_mcan], dim=1)
 
         if "prompt" in samples.keys():
             prompt = samples["prompt"]
         else:
-            prompt = self.prompt
+            # prompt = self.prompt
+            prompt = samples["text_input"]
 
         # prompt = [prompt] * image.size(0)
         if isinstance(prompt, str):
             prompt = [prompt] * image.size(0)
         else:
             assert len(prompt) == image.size(0), "The number of prompts must be equal to the batch size."
-        
-        
 
         t5_tokens = self.t5_tokenizer(
             prompt,
