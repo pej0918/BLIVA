@@ -1,0 +1,1 @@
+daiv/data/vg/annotations/vg_caption.json filter=lfs diff=lfs merge=lfs -text

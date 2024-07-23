@@ -5,6 +5,7 @@ __pycache__/
 
 # C extensions
 *.so
+*.json
 
 # Distribution / packaging
 .Python
@@ -165,3 +166,5 @@ wandb/
 
 *.pth
 clean.py
+
+*.json
