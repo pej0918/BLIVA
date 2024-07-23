@@ -157,6 +157,7 @@ debug*/
 
 cache/
 
+daiv/data/
 eval/answers
 
 saved_weights/
