@@ -176,7 +176,7 @@ class Blip2Qformer(Blip2Base):
         #print(f'sim_t2i size :{sim_t2i.size()}')
 
         ##이건 분산학습
-        rank = 0 # dist.get_rank()
+        rank = 0 #dist.get_rank()
 
         bs = image.size(0) #batchsize
         
