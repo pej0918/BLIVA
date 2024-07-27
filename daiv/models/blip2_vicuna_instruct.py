@@ -24,6 +24,7 @@ from daiv.models.dmformer.mcan.net_utils import LayerNorm  # Importing LayerNorm
 
 from daiv.common.registry import registry
 from daiv.models.blip2 import Blip2Base, disabled_train
+from daiv.models.dmformer.dat.deformable_attention_1d import DeformableAttention1D
 
 @registry.register_model("blip2_vicuna_instruct")
 class Blip2VicunaInstruct(Blip2Base):
@@ -169,6 +170,16 @@ class Blip2VicunaInstruct(Blip2Base):
         llm_tokens['attention_mask'] = torch.stack(llm_tokens['attention_mask'])
         return llm_tokens, input_part_targets_len
 
+        
+        ##DAT ATTN
+        self.dat = DeformableAttention1D(
+                            dim = 257,
+                            downsample_factor = 4,
+                            offset_scale = 2,
+                            offset_kernel_size = 6,
+                            offset_groups = 1
+                        )
+
     def forward(self, samples):
         # print('-----------------')
         # print(samples["text_input"])
@@ -193,6 +204,9 @@ class Blip2VicunaInstruct(Blip2Base):
         text_embeds_mcan = self.MCAN.embedding(text_tokens_mcan)
         text_embeds_mcan, _ = self.MCAN.lstm(text_embeds_mcan)
         text_atts_mcan = self.MCAN.make_mask(text_tokens_mcan.unsqueeze(2))
+
+        ##dat
+        image_embeds_mcan = self.dat(image_embeds_mcan)
 
         txt_mcan_output, img_mcan_output = self.MCAN.backbone(text_embeds_mcan, image_embeds_mcan, text_atts_mcan, image_atts_mcan)
         
