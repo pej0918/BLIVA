@@ -13,6 +13,8 @@ from transformers import T5TokenizerFast
 
 from daiv.models.dmformer.mcan.net import Net  # Importing the Net class from net.py
 from daiv.models.dmformer.mcan.net_utils import LayerNorm  # Importing LayerNorm
+from daiv.models.dmformer.dat.deformable_attention_1d import DeformableAttention1D
+
 
 from daiv.common.registry import registry
 from daiv.models.blip2 import Blip2Base, disabled_train
@@ -106,6 +108,15 @@ class Blip2T5Instruct(Blip2Base):
         self.num_few_shot_examples = num_few_shot_examples
         self.few_shot_prob = few_shot_prob
 
+        ##DAT ATTN
+        self.dat = DeformableAttention1D(
+                            dim = 257,
+                            downsample_factor = 4,
+                            offset_scale = 2,
+                            offset_kernel_size = 6,
+                            offset_groups = 1
+                        )
+
     def forward(self, samples):
         image = samples["image"]
         with self.maybe_autocast():
@@ -129,6 +140,9 @@ class Blip2T5Instruct(Blip2Base):
         text_embeds_mcan = self.MCAN.embedding(text_tokens_mcan)
         text_embeds_mcan, _ = self.MCAN.lstm(text_embeds_mcan)
         text_atts_mcan = self.MCAN.make_mask(text_tokens_mcan.unsqueeze(2))
+
+        ##dat
+        image_embeds_mcan = self.dat(image_embeds_mcan)
 
         txt_mcan_output, img_mcan_output = self.MCAN.backbone(text_embeds_mcan, image_embeds_mcan, text_atts_mcan, image_atts_mcan) # torch.Size([4, 257, 512])
         img_mcan_output = self.MCAN.attflat_img(img_mcan_output, image_atts_mcan) # torch.Size([4, 512])
