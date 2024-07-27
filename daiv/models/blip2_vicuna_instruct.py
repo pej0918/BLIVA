@@ -145,6 +145,15 @@ class Blip2VicunaInstruct(Blip2Base):
         self._lemmatizer = None
 
         self.qformer_text_input = qformer_text_input
+                
+        ##DAT ATTN
+        self.dat = DeformableAttention1D(
+                            dim = 257,
+                            downsample_factor = 4,
+                            offset_scale = 2,
+                            offset_kernel_size = 6,
+                            offset_groups = 1
+                        )
 
     def concat_text_input_output(self, input_ids, input_atts, output_ids, output_atts):
         input_part_targets_len = []
@@ -170,15 +179,6 @@ class Blip2VicunaInstruct(Blip2Base):
         llm_tokens['attention_mask'] = torch.stack(llm_tokens['attention_mask'])
         return llm_tokens, input_part_targets_len
 
-        
-        ##DAT ATTN
-        self.dat = DeformableAttention1D(
-                            dim = 257,
-                            downsample_factor = 4,
-                            offset_scale = 2,
-                            offset_kernel_size = 6,
-                            offset_groups = 1
-                        )
 
     def forward(self, samples):
         # print('-----------------')
