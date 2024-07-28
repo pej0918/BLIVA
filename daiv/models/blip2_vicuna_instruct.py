@@ -290,6 +290,16 @@ class Blip2VicunaInstruct(Blip2Base):
     ):
         self.llm_tokenizer.padding_side = "left"
 
+        # 명시적으로 설정
+        self.llm_model.config.pad_token_id = self.llm_tokenizer.pad_token_id
+        self.llm_model.config.bos_token_id = self.llm_tokenizer.bos_token_id
+        self.llm_model.config.eos_token_id = self.llm_tokenizer.eos_token_id
+        self.llm_model.config.unk_token_id = self.llm_tokenizer.unk_token_id
+
+        # generation_config에서 pad_token_id 설정
+        self.llm_model.generation_config.pad_token_id = self.llm_tokenizer.pad_token_id
+
+
         if "prompt" in samples.keys():
             prompt = samples["prompt"]
         else:
@@ -345,6 +355,12 @@ class Blip2VicunaInstruct(Blip2Base):
             return_tensors="pt"
         ).to(image.device)
 
+        if num_beams > 1 or num_captions > 1:
+            inputs_llm = inputs_llm.repeat_interleave(num_beams * num_captions, dim=0)
+            atts_llm = atts_llm.repeat_interleave(num_beams * num_captions, dim=0)
+            llm_tokens['input_ids'] = llm_tokens['input_ids'].repeat_interleave(num_beams * num_captions, dim=0)
+            llm_tokens['attention_mask'] = llm_tokens['attention_mask'].repeat_interleave(num_beams * num_captions, dim=0)
+
         with self.maybe_autocast():
             inputs_embeds = self.llm_model.get_input_embeddings()(llm_tokens.input_ids)
             inputs_embeds = torch.cat([inputs_llm, inputs_embeds], dim=1)
@@ -365,7 +381,7 @@ class Blip2VicunaInstruct(Blip2Base):
                 num_return_sequences=num_captions,
             )
 
-        outputs[outputs == 0] = 2 # convert output id 0 to 2 (eos_token_id)
+        # outputs[outputs == 0] = 2 # convert output id 0 to 2 (eos_token_id)
         # valid_outputs = [output[output >= 0] for output in outputs]
         # outputs[outputs == -1] = 1 # convert improper tokens to '' # https://github.com/salesforce/LAVIS/issues/457
         output_text = self.llm_tokenizer.batch_decode(outputs, skip_special_tokens=True)
