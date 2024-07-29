@@ -288,6 +288,7 @@ class Blip2VicunaInstruct(Blip2Base):
         num_captions=1,
         temperature=1,
     ):
+        print('generate pass....')
         self.llm_tokenizer.padding_side = "left"
 
         # 명시적으로 설정
