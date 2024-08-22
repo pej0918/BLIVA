@@ -7,6 +7,7 @@
 
 import re
 
+from transformers import AutoImageProcessor
 from daiv.common.registry import registry
 from daiv.processors.base_processor import BaseProcessor
 from daiv.processors.randaugment import RandomAugment

@@ -19,6 +19,8 @@ from daiv.models.blip2 import Blip2Base, disabled_train
 from daiv.models.modeling_t5 import T5Config, T5ForConditionalGeneration
 from transformers.modeling_outputs import BaseModelOutput
 
+from transformers import DeformableDetrForObjectDetection, AutoImageProcessor
+
 
 @registry.register_model("blip2_t5_instruct_ori")
 class Blip2T5Instruct(Blip2Base):
@@ -62,9 +64,20 @@ class Blip2T5Instruct(Blip2Base):
 
         self.tokenizer = self.init_tokenizer(truncation_side="left")
 
-        self.visual_encoder, self.ln_vision = self.init_vision_encoder(
-            vit_model, img_size, drop_path_rate, use_grad_checkpoint, vit_precision
-        )
+        # self.visual_encoder, self.ln_vision = self.init_vision_encoder(
+        #     vit_model, img_size, drop_path_rate, use_grad_checkpoint, vit_precision
+        # )
+        ## deformable detr
+        # self.visual_encoder, self.visual_processor = self.init_vision_encoder(
+        #     vit_model, img_size, drop_path_rate, use_grad_checkpoint, vit_precision
+        # )
+        self.visual_encoder = DeformableDetrForObjectDetection.from_pretrained("SenseTime/deformable-detr")
+        self.visual_processor = AutoImageProcessor.from_pretrained("SenseTime/deformable-detr")
+       
+        # (256 -> 1408)
+        self.global_linear_proj = nn.Linear(self.visual_encoder.config.d_model, 1408)
+        self.local_linear_proj = nn.Linear(self.visual_encoder.config.d_model, 2048)
+        
         if freeze_vit:
             for name, param in self.visual_encoder.named_parameters():
                 param.requires_grad = False
@@ -72,8 +85,12 @@ class Blip2T5Instruct(Blip2Base):
             self.visual_encoder.train = disabled_train
             logging.info("freeze vision encoder")
 
+        # self.Qformer, self.query_tokens = self.init_Qformer(
+        #     num_query_token, self.visual_encoder.config.encoder_ffn_dim
+        # )
+
         self.Qformer, self.query_tokens = self.init_Qformer(
-            num_query_token, self.visual_encoder.num_features
+             num_query_token, 1408 #1408 ; vit feature dim
         )
 
         if not qformer_text_input:
@@ -120,13 +137,28 @@ class Blip2T5Instruct(Blip2Base):
         # print(samples["text_input"])
         # print(samples["text_output"])
         # print('-----------------')
-
-        image = samples["image"]
+        image = samples["raw_image"]
+        image_inputs = self.visual_processor(images=image, return_tensors="pt")
+        image_inputs = image_inputs.to('cuda')
+        image_inputs["pixel_values"] = image_inputs["pixel_values"].half()
+        
         with self.maybe_autocast():
-            image_embeds = self.ln_vision(self.visual_encoder(image))
-        image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(image.device)
+            image_embeds = self.visual_encoder(**image_inputs)
+            image_embeds_global = image_embeds['encoder_last_hidden_state']
+            image_embeds_local = image_embeds['last_hidden_state']
+        
+        # image global embed size ; torch.Size([16, 22223, 256])
+        # image embed local size ; torch.Size([16, 300, 256])
+        # print(f'image embed global size ; {image_embeds_global.size()}')
+        # print(f'image embed local size ; {image_embeds_local.size()}')   
 
-        query_tokens = self.query_tokens.expand(image_embeds.shape[0], -1, -1)
+        # torch.Size([16, 22223, 256]) > torch.Size([16, 22223, 1408])
+        image_embeds_global = self.global_linear_proj(image_embeds_global)
+        # print(f'image embed global size ; {image_embeds_global.size()}')
+        image_atts_global = torch.ones(image_embeds_global.size()[:-1], dtype=torch.long).to('cuda')
+        image_atts_local = torch.ones(image_embeds_local.size()[:-1], dtype=torch.long).to('cuda')
+        
+        query_tokens = self.query_tokens.expand(image_embeds_global.shape[0], -1, -1)
         if self.qformer_text_input:
             text_Qformer = self.tokenizer(
                 samples["text_input"],
@@ -134,28 +166,28 @@ class Blip2T5Instruct(Blip2Base):
                 truncation=True,
                 max_length=self.max_txt_len,
                 return_tensors="pt",
-            ).to(image.device)
-            query_atts = torch.ones(query_tokens.size()[:-1], dtype=torch.long).to(image.device)
+            ).to('cuda')
+            query_atts = torch.ones(query_tokens.size()[:-1], dtype=torch.long).to('cuda')
             Qformer_atts = torch.cat([query_atts,text_Qformer.attention_mask],dim=1)
 
             query_output = self.Qformer.bert(
                 text_Qformer.input_ids,
                 attention_mask=Qformer_atts,
                 query_embeds=query_tokens,
-                encoder_hidden_states=image_embeds,
-                encoder_attention_mask=image_atts,
+                encoder_hidden_states=image_embeds_global,
+                encoder_attention_mask=image_atts_global,
                 return_dict=True,
             )
         else:
             query_output = self.Qformer.bert(
                 query_embeds=query_tokens,
-                encoder_hidden_states=image_embeds,
-                encoder_attention_mask=image_atts,
+                encoder_hidden_states=image_embeds_global,
+                encoder_attention_mask=image_atts_global,
                 return_dict=True,
             )
 
         inputs_t5 = self.t5_proj(query_output.last_hidden_state[:,:query_tokens.size(1),:])
-        atts_t5 = torch.ones(inputs_t5.size()[:-1], dtype=torch.long).to(image.device)
+        atts_t5 = torch.ones(inputs_t5.size()[:-1], dtype=torch.long).to('cuda')
 
         fs_embeds, fs_atts = None, None
         if self.few_shot_prob > 0 and "few_shot_samples" in samples.keys():
@@ -168,23 +200,28 @@ class Blip2T5Instruct(Blip2Base):
                 truncation=True,
                 max_length=self.max_txt_len,
                 return_tensors="pt",
-            ).to(image.device)
+            ).to('cuda')
             output_tokens = self.t5_output_tokenizer(
                 samples["text_output"],
                 padding="longest",
                 truncation=True,
                 max_length=self.max_output_txt_len,
                 return_tensors="pt",
-            ).to(image.device)
+            ).to('cuda')
 
-            encoder_atts = torch.cat([atts_t5, input_tokens.attention_mask], dim=1)
-
+            # encoder_atts = torch.cat([atts_t5, input_tokens.attention_mask], dim=1)
+            encoder_atts = torch.cat([atts_t5, input_tokens.attention_mask, image_atts_local], dim=1)
+            
             targets = output_tokens.input_ids.masked_fill(
                 output_tokens.input_ids == self.t5_tokenizer.pad_token_id, -100
             )
 
             inputs_embeds = self.t5_model.encoder.embed_tokens(input_tokens.input_ids)
-            inputs_embeds = torch.cat([inputs_t5, inputs_embeds], dim=1)
+            # inputs_embeds = torch.cat([inputs_t5, inputs_embeds], dim=1)
+            
+            # local 정보 추가
+            image_embeds_local = self.local_linear_proj(image_embeds_local)
+            inputs_embeds = torch.cat([inputs_t5, inputs_embeds,image_embeds_local], dim=1)
 
             if fs_embeds is not None:
                 inputs_embeds = torch.cat([fs_embeds, inputs_embeds], dim=1)

@@ -60,8 +60,8 @@ class COCOVQADataset(VQADataset):
         # #    print(f"Warning: File {image_path} does not exist in . Skipping this item.")
         #     return self.__getitem__((index + 1) % len(self))
 
-        image = Image.open(image_path).convert("RGB")
-        image = self.vis_processor(image)
+        raw_image = Image.open(image_path).convert("RGB")
+        image = self.vis_processor(raw_image)
         question = self.text_processor(ann["question"])
         choice = np.random.choice(len(self.prompts))
 
@@ -76,6 +76,7 @@ class COCOVQADataset(VQADataset):
         best_answer = max(answer_weight, key=answer_weight.get)
 
         return {
+            "raw_image" : raw_image,
             "image": image,
             "text_input": text_input,
             "text_output": best_answer,

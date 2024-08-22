@@ -21,6 +21,7 @@ import transformers
 
 from daiv.common.registry import registry
 from daiv.models.blip2 import Blip2Base, disabled_train
+from transformers import DeformableDetrForObjectDetection, AutoImageProcessor
 
 import os
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
@@ -66,9 +67,13 @@ class Blip2VicunaInstruct(Blip2Base):
         
         self.tokenizer = self.init_tokenizer(truncation_side="left")
 
+        ## deformable detr
         self.visual_encoder, self.ln_vision = self.init_vision_encoder(
             vit_model, img_size, drop_path_rate, use_grad_checkpoint, vit_precision
         )
+        # self.visual_encoder = DeformableDetrForObjectDetection.from_pretrained("SenseTime/deformable-detr")
+        # self.visual_processor = AutoImageProcessor.from_pretrained("SenseTime/deformable-detr")
+
         if freeze_vit:
             for name, param in self.visual_encoder.named_parameters():
                 param.requires_grad = False
@@ -155,8 +160,14 @@ class Blip2VicunaInstruct(Blip2Base):
 
         image = samples["image"]
         with self.maybe_autocast():
-            image_embeds = self.ln_vision(self.visual_encoder(image))
+            image_inputs = self.visual_processor(images=image,return_tensors="pt")
+            image_embeds = self.visual_encoder(**image_inputs)
+            image_embeds = image_embeds['encoder_last_hidden_state']
+            image_embeds_local = image_embeds['encoder_last_hidden_state']
         image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(image.device)
+
+        print(f'image embed size ; {image_embeds.size()}')
+        print(f'image embed local size ; {image_embeds_local.size()}')
 
         bs = image.size(0)
 
