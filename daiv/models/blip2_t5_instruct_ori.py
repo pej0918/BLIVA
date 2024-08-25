@@ -332,9 +332,12 @@ class Blip2T5Instruct(Blip2Base):
         else:
             prompt = self.prompt
 
-        image = samples["image"]
+        image = samples["raw_image"]
+        image_inputs = self.visual_processor(images=image, return_tensors="pt")
+        image_inputs = image_inputs.to('cuda')
+        image_inputs["pixel_values"] = image_inputs["pixel_values"].half()
 
-        bs = image.size(0)
+        bs = image_inputs["pixel_values"].size(0)
 
         if isinstance(prompt, str):
             prompt = [prompt] * bs
@@ -357,18 +360,18 @@ class Blip2T5Instruct(Blip2Base):
                 truncation=True,
                 max_length=self.max_txt_len,
                 return_tensors="pt",
-            ).to(image.device)
-            query_atts = torch.ones(query_tokens.size()[:-1], dtype=torch.long).to(image.device)
+            ).to('cuda')
+            query_atts = torch.ones(query_tokens.size()[:-1], dtype=torch.long).to('cuda')
             Qformer_atts = torch.cat([query_atts,text_Qformer.attention_mask],dim=1)
 
         # For video data
-        if image.dim() == 5:
+        if image_inputs["pixel_values"].dim() == 5:
             inputs_t5, atts_t5 = [], []
             for j in range(image.size(2)):
                 this_frame = image[:,:,j,:,:]
                 with self.maybe_autocast():
                     frame_embeds = self.ln_vision(self.visual_encoder(this_frame))
-                    frame_atts = torch.ones(frame_embeds.size()[:-1], dtype=torch.long).to(image.device)
+                    frame_atts = torch.ones(frame_embeds.size()[:-1], dtype=torch.long).to('cuda')
 
                 if self.qformer_text_input:
                     frame_query_output = self.Qformer.bert(
@@ -388,47 +391,56 @@ class Blip2T5Instruct(Blip2Base):
                     )
 
                 frame_inputs_t5 = self.t5_proj(frame_query_output.last_hidden_state[:,:query_tokens.size(1),:])
-                frame_atts_t5 = torch.ones(frame_inputs_t5.size()[:-1], dtype=torch.long).to(image.device)
+                frame_atts_t5 = torch.ones(frame_inputs_t5.size()[:-1], dtype=torch.long).to('cuda')
                 inputs_t5.append(frame_inputs_t5)
                 atts_t5.append(frame_atts_t5)
             inputs_t5 = torch.cat(inputs_t5, dim=1)
             atts_t5 = torch.cat(atts_t5, dim=1)
         else:
             with self.maybe_autocast():
-                image_embeds = self.ln_vision(self.visual_encoder(image))
-            image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(image.device)
-
+                image_embeds = self.visual_encoder(**image_inputs)
+                image_embeds_global = image_embeds['encoder_last_hidden_state']
+                image_embeds_local = image_embeds['last_hidden_state']
+            image_embeds_global = self.global_linear_proj(image_embeds_global)
+            # print(f'image embed global size ; {image_embeds_global.size()}')
+            image_atts_global = torch.ones(image_embeds_global.size()[:-1], dtype=torch.long).to('cuda')
+            image_atts_local = torch.ones(image_embeds_local.size()[:-1], dtype=torch.long).to('cuda')
+            
             if self.qformer_text_input:
                 query_output = self.Qformer.bert(
                     text_Qformer.input_ids,
                     attention_mask=Qformer_atts,
                     query_embeds=query_tokens,
-                    encoder_hidden_states=image_embeds,
-                    encoder_attention_mask=image_atts,
+                    encoder_hidden_states=image_embeds_global,
+                    encoder_attention_mask=image_atts_global,
                     return_dict=True,
                 )
             else:
                 query_output = self.Qformer.bert(
                     query_embeds=query_tokens,
-                    encoder_hidden_states=image_embeds,
-                    encoder_attention_mask=image_atts,
+                    encoder_hidden_states=image_embeds_global,
+                    encoder_attention_mask=image_atts_global,
                     return_dict=True,
                 )
 
             inputs_t5 = self.t5_proj(query_output.last_hidden_state[:,:query_tokens.size(1),:])
-            atts_t5 = torch.ones(inputs_t5.size()[:-1], dtype=torch.long).to(image.device)
+            atts_t5 = torch.ones(inputs_t5.size()[:-1], dtype=torch.long).to('cuda')
 
         input_tokens = self.t5_tokenizer(
             prompt,
             padding="longest",
             return_tensors="pt"
-        ).to(image.device)
+        ).to('cuda')
 
-        encoder_atts = torch.cat([atts_t5, input_tokens.attention_mask], dim=1)
-
+        # encoder_atts = torch.cat([atts_t5, input_tokens.attention_mask], dim=1)
+        encoder_atts = torch.cat([atts_t5, input_tokens.attention_mask, image_atts_local], dim=1)
+       
         with self.maybe_autocast(dtype=torch.bfloat16):
             inputs_embeds = self.t5_model.encoder.embed_tokens(input_tokens.input_ids)
-            inputs_embeds = torch.cat([inputs_t5, inputs_embeds], dim=1)
+            # inputs_embeds = torch.cat([inputs_t5, inputs_embeds], dim=1)
+            image_embeds_local = self.local_linear_proj(image_embeds_local)
+            inputs_embeds = torch.cat([inputs_t5, inputs_embeds,image_embeds_local], dim=1)
+
 
             outputs = self.t5_model.generate(
                 inputs_embeds=inputs_embeds,

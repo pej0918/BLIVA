@@ -51,3 +51,21 @@ class VQADataset(BaseDataset):
 class VQAEvalDataset(BaseDataset):
     def __init__(self, vis_processor, text_processor, vis_root, ann_paths):
         super().__init__(vis_processor, text_processor, vis_root, ann_paths)
+    
+    def collater(self, samples):
+        raw_image_list, image_list, question_list, question_id_list, instance_id_list = [], [], [], [], []
+
+        for sample in samples:
+            raw_image_list.append(sample["raw_image"])  # PIL 이미지 그대로 유지
+            image_list.append(sample["image"])          # 텐서로 변환된 이미지 사용
+            question_list.append(sample["text_input"])
+            question_id_list.append(sample["question_id"])
+            instance_id_list.append(sample["instance_id"])
+
+        return {
+            "raw_image": raw_image_list,  # PIL 이미지 리스트
+            "image": torch.stack(image_list, dim=0),
+            "text_input": question_list,
+            "question_id": question_id_list,
+            "instance_id": instance_id_list
+        }

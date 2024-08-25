@@ -16,6 +16,9 @@ from collections import OrderedDict
 import torch
 import numpy as np
 
+from transformers import DeformableDetrForObjectDetection, AutoImageProcessor
+
+
 class __DisplMixin:
     def displ_item(self, index):
         sample, ann = self.__getitem__(index), self.annotation[index]
@@ -27,6 +30,7 @@ class __DisplMixin:
                 "question_id": ann["question_id"],
                 "answers": "; ".join(ann["answers"]),
                 "image": sample["image"],
+                "raw_image": sample["raw_image"],
             }
         )
 
@@ -148,6 +152,8 @@ class COCOVQAEvalDataset(VQAEvalDataset, __DisplMixin):
         ann_root (string): Directory to store the annotation file
         """
         self.vis_root = vis_root
+        self.visual_encoder = DeformableDetrForObjectDetection.from_pretrained("SenseTime/deformable-detr")
+        self.visual_processor = AutoImageProcessor.from_pretrained("SenseTime/deformable-detr")
 
         with open(ann_paths[0], "r") as f:
             data = json.load(f)
@@ -183,12 +189,15 @@ class COCOVQAEvalDataset(VQAEvalDataset, __DisplMixin):
         # #    # 이미지가 없으면 다음 항목으로 넘어갑니다.
         # #    print(f"Warning: File {image_path} does not exist in . Skipping this item.")
         #     return self.__getitem__((index + 1) % len(self))
-        image = Image.open(image_path).convert("RGB")
-
-        image = self.vis_processor(image)
+        # image = Image.open(image_path).convert("RGB")
+        raw_image = Image.open(image_path).convert("RGB")
+        # image_inputs = self.visual_processor(images=raw_image, return_tensors="pt")
+        # image_embeds = self.visual_encoder(**image_inputs)
+        image = self.vis_processor(raw_image)
         question = self.text_processor(ann["question"])
 
         return {
+            "raw_image" : raw_image,
             "image": image,
             "text_input": question,
             "question_id": ann["question_id"],
