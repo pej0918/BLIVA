@@ -15,13 +15,14 @@ class VQADataset(BaseDataset):
         super().__init__(vis_processor, text_processor, vis_root, ann_paths)
 
     def collater(self, samples):
-        image_list, question_list, prompt_list, answer_list, weight_list = [], [], [], [], []
+        images_list,image_list, question_list, prompt_list, answer_list, weight_list = [], [], [], [], [],[]
 
         num_answers = []
 
         #print(f'samples : {samples}')
         
         for sample in samples:
+            images_list.append(sample["image"])
             image_list.append(sample["feats"])
             question_list.append(sample["question"])
             prompt_list.append(sample["text_input"])
@@ -30,6 +31,7 @@ class VQADataset(BaseDataset):
             # num_answers.append(len(list(sample["weights"].values())))
 
         return {
+            "image": torch.stack(images_list, dim=0),
             "feats": torch.stack(image_list, dim=0),
             "question": torch.stack(question_list, dim=0),
             "text_input": prompt_list,

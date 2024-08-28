@@ -18,6 +18,8 @@ from daiv.common.registry import registry
 from daiv.models.blip2 import Blip2Base, disabled_train
 from daiv.models.modeling_t5 import T5Config, T5ForConditionalGeneration
 from transformers.modeling_outputs import BaseModelOutput
+from daiv.models.ddprojector import DD_Projector
+from transformers.models.deformable_detr import DeformableDetrConfig
 
 
 @registry.register_model("blip2_t5_instruct_ori")
@@ -36,6 +38,7 @@ class Blip2T5Instruct(Blip2Base):
         "flant5xl": "configs/models/blip2_instruct_flant5xl_ori.yaml",
         # "flant5xxl": "configs/models/blip2_instruct_flant5xxl.yaml",
     }
+
 
     def __init__(
         self,
@@ -60,11 +63,41 @@ class Blip2T5Instruct(Blip2Base):
         """
         super().__init__()
 
+    
+
         self.tokenizer = self.init_tokenizer(truncation_side="left")
 
         self.visual_encoder, self.ln_vision = self.init_vision_encoder(
             vit_model, img_size, drop_path_rate, use_grad_checkpoint, vit_precision
         )
+
+        # projector_config 딕셔너리 정의
+        d_projector_config = {
+            "projector_type": "d-abs",
+            "d_model": 1408,  # 출력 차원
+            "decoder_layers": 6,
+            "use_pretrained_backbone": False,  # 처음부터 학습
+            "num_eos_tokens": 0,
+            "initializer_range": 0.02,  # 초기화 표준편차
+            "disable_custom_kernels": False,
+            "num_feature_levels": 1,  # 피쳐 레벨 수
+            "feature_layer_index": -1,  # 마지막 레이어
+            "pos_emb": True,
+            "manual_init_refPoints": True,
+            "learnable_mRP": True,
+            "pooled_v_target": "query",
+            "num_queries": 256,  # 쿼리 수
+            "num_query_tokens": 256,  # 입력 토큰 수
+            "encoder_hidden_size": 1408,  # 인코더에서 출력하는 차원
+            "output_hidden_size": 2048  # 최종 출력 차원
+        }
+
+        # DeformableDetrConfig 객체 생성
+        dd_config = DeformableDetrConfig(**d_projector_config)
+
+        self.DD_Projector = DD_Projector(num_input_tokens=256, config=dd_config)
+
+
         if freeze_vit:
             for name, param in self.visual_encoder.named_parameters():
                 param.requires_grad = False
@@ -124,6 +157,13 @@ class Blip2T5Instruct(Blip2Base):
         image = samples["image"]
         with self.maybe_autocast():
             image_embeds = self.ln_vision(self.visual_encoder(image))
+            
+            # deformable detr decoder layer output
+            visual_feat = image_embeds[:, 1:, :]
+            visual_feat = self.DD_Projector(visual_feat)
+            visual_feat = visual_feat['last_hidden_state']
+        # print(visual_feat.size()) # torch.Size([32, 256, 2048])
+
         image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(image.device)
 
         query_tokens = self.query_tokens.expand(image_embeds.shape[0], -1, -1)
@@ -156,7 +196,12 @@ class Blip2T5Instruct(Blip2Base):
 
         inputs_t5 = self.t5_proj(query_output.last_hidden_state[:,:query_tokens.size(1),:])
         atts_t5 = torch.ones(inputs_t5.size()[:-1], dtype=torch.long).to(image.device)
+        
+        # Concatenate inputs_t5 and visual_feat
+        combined_inputs = torch.cat([inputs_t5, visual_feat], dim=1)
+        combined_atts = torch.ones(combined_inputs.size()[:-1], dtype=torch.long).to(image.device)
 
+        
         fs_embeds, fs_atts = None, None
         if self.few_shot_prob > 0 and "few_shot_samples" in samples.keys():
             fs_embeds, fs_atts = self.prepare_few_shot_embeds(samples['few_shot_samples'])
@@ -177,15 +222,17 @@ class Blip2T5Instruct(Blip2Base):
                 return_tensors="pt",
             ).to(image.device)
 
-            encoder_atts = torch.cat([atts_t5, input_tokens.attention_mask], dim=1)
-
+            # encoder_atts = torch.cat([atts_t5, input_tokens.attention_mask], dim=1)
+            encoder_atts = torch.cat([combined_atts, input_tokens.attention_mask], dim=1)
+            
             targets = output_tokens.input_ids.masked_fill(
                 output_tokens.input_ids == self.t5_tokenizer.pad_token_id, -100
             )
 
             inputs_embeds = self.t5_model.encoder.embed_tokens(input_tokens.input_ids)
-            inputs_embeds = torch.cat([inputs_t5, inputs_embeds], dim=1)
-
+            # inputs_embeds = torch.cat([inputs_t5, inputs_embeds], dim=1)
+            inputs_embeds = torch.cat([combined_inputs, inputs_embeds], dim=1)
+            
             if fs_embeds is not None:
                 inputs_embeds = torch.cat([fs_embeds, inputs_embeds], dim=1)
                 encoder_atts = torch.cat([fs_atts, encoder_atts], dim=1)
@@ -304,16 +351,8 @@ class Blip2T5Instruct(Blip2Base):
         else:
             assert len(prompt) == bs, "The number of prompts must be equal to the batch size."
 
-        # For TextCaps
-        if "ocr_tokens" in samples.keys() and "{}" in prompt[0]:
-            prompt = [p.format(', '.join(samples['ocr_tokens'][i][:30])) for i, p in enumerate(prompt)]
-
         query_tokens = self.query_tokens.expand(bs, -1, -1)
         if self.qformer_text_input:
-            # remove ocr tokens in q_former (for eval textvqa)
-            # qformer_prompt = prompt
-            # qformer_prompt = ['Question: ' + qp.split(' Question: ')[1] for qp in qformer_prompt]
-
             text_Qformer = self.tokenizer(
                 prompt,
                 padding='longest',
@@ -322,64 +361,35 @@ class Blip2T5Instruct(Blip2Base):
                 return_tensors="pt",
             ).to(image.device)
             query_atts = torch.ones(query_tokens.size()[:-1], dtype=torch.long).to(image.device)
-            Qformer_atts = torch.cat([query_atts,text_Qformer.attention_mask],dim=1)
+            Qformer_atts = torch.cat([query_atts, text_Qformer.attention_mask], dim=1)
 
-        # For video data
-        if image.dim() == 5:
-            inputs_t5, atts_t5 = [], []
-            for j in range(image.size(2)):
-                this_frame = image[:,:,j,:,:]
-                with self.maybe_autocast():
-                    frame_embeds = self.ln_vision(self.visual_encoder(this_frame))
-                    frame_atts = torch.ones(frame_embeds.size()[:-1], dtype=torch.long).to(image.device)
+        with self.maybe_autocast():
+            image_embeds = self.ln_vision(self.visual_encoder(image))
+        
+        image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(image.device)
 
-                if self.qformer_text_input:
-                    frame_query_output = self.Qformer.bert(
-                        text_Qformer.input_ids,
-                        attention_mask = Qformer_atts,
-                        query_embeds=query_tokens,
-                        encoder_hidden_states=frame_embeds,
-                        encoder_attention_mask=frame_atts,
-                        return_dict=True,
-                    )
-                else:
-                    frame_query_output = self.Qformer.bert(
-                        query_embeds=query_tokens,
-                        encoder_hidden_states=frame_embeds,
-                        encoder_attention_mask=frame_atts,
-                        return_dict=True,
-                    )
+        visual_feat = image_embeds[:, 1:, :]
+        visual_feat = self.DD_Projector(visual_feat)['last_hidden_state']
 
-                frame_inputs_t5 = self.t5_proj(frame_query_output.last_hidden_state[:,:query_tokens.size(1),:])
-                frame_atts_t5 = torch.ones(frame_inputs_t5.size()[:-1], dtype=torch.long).to(image.device)
-                inputs_t5.append(frame_inputs_t5)
-                atts_t5.append(frame_atts_t5)
-            inputs_t5 = torch.cat(inputs_t5, dim=1)
-            atts_t5 = torch.cat(atts_t5, dim=1)
+        if self.qformer_text_input:
+            query_output = self.Qformer.bert(
+                text_Qformer.input_ids,
+                attention_mask=Qformer_atts,
+                query_embeds=query_tokens,
+                encoder_hidden_states=image_embeds,
+                encoder_attention_mask=image_atts,
+                return_dict=True,
+            )
         else:
-            with self.maybe_autocast():
-                image_embeds = self.ln_vision(self.visual_encoder(image))
-            image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(image.device)
+            query_output = self.Qformer.bert(
+                query_embeds=query_tokens,
+                encoder_hidden_states=image_embeds,
+                encoder_attention_mask=image_atts,
+                return_dict=True,
+            )
 
-            if self.qformer_text_input:
-                query_output = self.Qformer.bert(
-                    text_Qformer.input_ids,
-                    attention_mask=Qformer_atts,
-                    query_embeds=query_tokens,
-                    encoder_hidden_states=image_embeds,
-                    encoder_attention_mask=image_atts,
-                    return_dict=True,
-                )
-            else:
-                query_output = self.Qformer.bert(
-                    query_embeds=query_tokens,
-                    encoder_hidden_states=image_embeds,
-                    encoder_attention_mask=image_atts,
-                    return_dict=True,
-                )
-
-            inputs_t5 = self.t5_proj(query_output.last_hidden_state[:,:query_tokens.size(1),:])
-            atts_t5 = torch.ones(inputs_t5.size()[:-1], dtype=torch.long).to(image.device)
+        inputs_t5 = self.t5_proj(query_output.last_hidden_state[:, :query_tokens.size(1), :])
+        atts_t5 = torch.ones(inputs_t5.size()[:-1], dtype=torch.long).to(image.device)
 
         input_tokens = self.t5_tokenizer(
             prompt,
@@ -387,11 +397,19 @@ class Blip2T5Instruct(Blip2Base):
             return_tensors="pt"
         ).to(image.device)
 
-        encoder_atts = torch.cat([atts_t5, input_tokens.attention_mask], dim=1)
-
+        # Separate processing for inputs_t5 and visual_feat
         with self.maybe_autocast(dtype=torch.bfloat16):
+            inputs_embeds_t5 = inputs_t5
+            visual_feat_embeds = visual_feat
+            
+            # Concatenate processed inputs_t5 and visual_feat at the final stage
+            combined_inputs = torch.cat([inputs_embeds_t5, visual_feat_embeds], dim=1)
+            combined_atts = torch.ones(combined_inputs.size()[:-1], dtype=torch.long).to(image.device)
+
             inputs_embeds = self.t5_model.encoder.embed_tokens(input_tokens.input_ids)
-            inputs_embeds = torch.cat([inputs_t5, inputs_embeds], dim=1)
+            inputs_embeds = torch.cat([combined_inputs, inputs_embeds], dim=1)
+
+            encoder_atts = torch.cat([combined_atts, input_tokens.attention_mask], dim=1)
 
             outputs = self.t5_model.generate(
                 inputs_embeds=inputs_embeds,
@@ -411,6 +429,7 @@ class Blip2T5Instruct(Blip2Base):
             )
 
         return output_text
+
 
     def predict_answers(
         self,

@@ -24,6 +24,9 @@ from transformers.modeling_outputs import BaseModelOutput
 from daiv.models.prophet.configs.task_cfgs import Cfgs
 from daiv.models.prophet.model.mcan_for_finetune import MCANForFinetune
 
+from daiv.models.ddprojector import DD_Projector
+from transformers.models.deformable_detr import DeformableDetrConfig
+
 @registry.register_model("blip2_t5_instruct_mcan")
 class Blip2T5Instruct(Blip2Base):
     """
@@ -123,6 +126,33 @@ class Blip2T5Instruct(Blip2Base):
         self.net = None 
         self.ln_layer = LayerNorm(2048)
         self.qformer_proj = nn.Linear(2048, 1408)
+
+        # dd-projector
+        # projector_config 딕셔너리 정의
+        d_projector_config = {
+            "projector_type": "d-abs",
+            "d_model": 1024,  # hidden_dim
+            "decoder_layers": 6,
+            "use_pretrained_backbone": False,  # From scratch
+            "num_eos_tokens": 0,
+            "initializer_range": 0.02,  # Initialization std for eos tokens
+            "disable_custom_kernels": False,  # Use custom CUDA kernel or PyTorch implementation
+            "num_feature_levels": 1,
+            "feature_layer_index": -1,  # Vision feature layer index; -1: last layer
+            "pos_emb": True,
+            "manual_init_refPoints": True,
+            "learnable_mRP": True,
+            "pooled_v_target": "query",
+            "num_queries": num_query_token,  
+            "num_query_tokens": num_query_token,
+            "encoder_hidden_size" : 2048, #mcan output size
+            "output_hidden_size" : self.visual_encoder.num_features
+        }
+
+        # DeformableDetrConfig 객체 생성
+        dd_config = DeformableDetrConfig(**d_projector_config)
+
+        self.DD_Projector = DD_Projector(num_input_tokens=num_query_token, config=dd_config)
     
     def init_mcan(self):
         # Load preatrained MCAN
@@ -154,6 +184,7 @@ class Blip2T5Instruct(Blip2Base):
         # MCAN input
         feats = samples['feats'] #(bs, 256, 4096)
         ques = samples['question'] #(bs, 32)
+        image = samples['image']
 
         # 첫 번째 forward 시점에서만 MCAN을 초기화
         if self.net is None:
@@ -164,10 +195,13 @@ class Blip2T5Instruct(Blip2Base):
         # print('feats:', feats.shape)
         # print('ques:', ques.shape)
         # exit()
-
         _, image_embeds = self.net([feats, ques], output_answer_latent=True)#(bs, 2048)
         # image_embeds = self.ln_layer(image_embeds)
-        image_embeds = self.qformer_proj(image_embeds)#(bs, 1408)
+
+        image_embeds_dd = self.ln_vision(self.visual_encoder(image))
+        image_embeds_dd = self.DD_Projector(image_embeds_dd)
+        print(image_embeds_dd.size())
+        # image_embeds = self.qformer_proj(image_embeds)#(bs, 1408)
         image_embeds = image_embeds.unsqueeze(1)
         # print('Qformer hidden shape', self.Qformer.config.hidden_size)
         # print('image_embeds:', image_embeds.shape) 
