@@ -222,17 +222,18 @@ class COCOVQAEvalDataset(VQAEvalDataset, __DisplMixin):
     def __getitem__(self, index):
         ann = self.annotation[index]
 
-        # image_filename = f"val2014/COCO_val2014_{ann['image_id']:012d}.jpg"
-        # image_path = os.path.join(self.vis_root, image_filename)
+        image_filename = f"val2014/COCO_val2014_{ann['image_id']:012d}.jpg"
+        image_path = os.path.join(self.vis_root, image_filename)
         # if not os.path.exists(image_path):
         # #    # 이미지가 없으면 다음 항목으로 넘어갑니다.
         # #    print(f"Warning: File {image_path} does not exist in . Skipping this item.")
         #     return self.__getitem__((index + 1) % len(self))
-        # image = Image.open(image_path).convert("RGB")
+        image = Image.open(image_path).convert("RGB")
+        image = self.vis_processor(image)
 
         # Process image feature
         feat_filename = f"val2014/COCO_val2014_{ann['image_id']:012d}.npz"
-        feat_path = os.path.join(self.vis_root, feat_filename)
+        feat_path = os.path.join('/root/workspace/24s-VQA-MLLM/dataset/coco/images_feats', feat_filename)
         feats = np.load(feat_path)['x']
         assert feats.shape == (16, 16, 4096)
         feats = feats.reshape(-1, 4096)
@@ -246,7 +247,7 @@ class COCOVQAEvalDataset(VQAEvalDataset, __DisplMixin):
         text_input = self.prompts[choice].format(question)
 
         return {
-            # "image": image,
+            "image": image,
             "feats": torch.tensor(feats, dtype=torch.float),
             "question": torch.tensor(ques_ids, dtype=torch.long),
             "text_input": text_input,
